@@ -61,30 +61,17 @@ async function saveProduct(product) {
 async function seedDefaults() {
     const existing = await getAllProducts();
 
-    if (!existing.length) {
-        for (const product of defaultProducts) {
-            await saveProduct(product);
-        }
-        return getAllProducts();
-    }
+    for (const product of defaultProducts) {
+        const saved = existing.find(item => item.id === product.id);
 
-    // Atualiza as imagens dos produtos padrão
-    for (const defaultProduct of defaultProducts) {
-        const savedProduct = existing.find(
-            product => product.id === defaultProduct.id
+        await saveProduct(saved
+            ? { ...saved, ...product }
+            : product
         );
-
-        if (savedProduct) {
-            await saveProduct({
-                ...savedProduct,
-                image: defaultProduct.image
-            });
-        }
     }
 
     return getAllProducts();
 }
-
 const grid = document.getElementById("product-grid");
 const search = document.getElementById("search");
 const categoryButtons = document.querySelectorAll(".category-card");
@@ -146,13 +133,12 @@ function renderProducts() {
 async function startCatalog() {
     try {
         products = await seedDefaults();
-        renderProducts();
     } catch (error) {
-        console.error(error);
-        if (grid) {
-            grid.innerHTML = '<p class="empty-message">Não foi possível carregar o catálogo neste navegador.</p>';
-        }
+        console.error("Erro no banco:", error);
+        products = defaultProducts;
     }
+
+    renderProducts();
 }
 
 search?.addEventListener("input", renderProducts);
