@@ -58,7 +58,7 @@ async function saveProduct(product) {
     });
 }
 
-async function seedDefaults() {
+async function async function seedDefaults() {
     const existing = await getAllProducts();
 
     if (!existing.length) {
@@ -68,14 +68,13 @@ async function seedDefaults() {
         return getAllProducts();
     }
 
-    // Atualiza os caminhos antigos sem apagar produtos personalizados.
+    // Atualiza as imagens dos produtos padrão
     for (const defaultProduct of defaultProducts) {
-        const savedProduct = existing.find(product => product.id === defaultProduct.id);
+        const savedProduct = existing.find(
+            product => product.id === defaultProduct.id
+        );
 
-        if (
-            savedProduct &&
-            (!savedProduct.image || savedProduct.image.startsWith("assets/Produtos/"))
-        ) {
+        if (savedProduct) {
             await saveProduct({
                 ...savedProduct,
                 image: defaultProduct.image
