@@ -58,7 +58,7 @@ async function saveProduct(product) {
     });
 }
 
-async function async function seedDefaults() {
+async function seedDefaults() {
     const existing = await getAllProducts();
 
     if (!existing.length) {
