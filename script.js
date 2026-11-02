@@ -3,14 +3,14 @@ const DB_NAME = "adrStoreDB";
 const STORE_NAME = "products";
 
 const defaultProducts = [
-    { id: "default-1", name: "Nike Tech Fleece 2025", category: "Casaco", price: 263.61, image: "assets/Produtos/NikeTechPreta25.jpg", tag: "US DRIP", affiliateLink: "https://s.shopee.com.br/9V2huXndk8" },
-    { id: "default-2", name: "Nike Tech Fleece Nocta 2024", category: "Casaco", price: 263.61, image: "", tag: "US DRIP", affiliateLink: "https://s.shopee.com.br/AAIOiCO1lc" },
-    { id: "default-3", name: "Nike Tech Fleece 2024", category: "Casaco", price: 263.61, image: "assets/Produtos/NikeTechcinza24.jpg", tag: "US DRIP", affiliateLink: "https://s.shopee.com.br/8pn17sBuv6" },
-    { id: "default-4", name: "Nike Tech Fleece SYNA 2024", category: "Casaco", price: 263.61, image: "", tag: "US DRIP", affiliateLink: "https://s.shopee.com.br/5fpzM4alby" },
-    { id: "default-5", name: "Balaclava Nike Pro", category: "Acessórios", price: 71.65, image: "assets/Produtos/BalaclavaNike.jpg", tag: "US DRIP", affiliateLink: "https://s.shopee.com.br/3B8eNZzFnH" },
-    { id: "default-6", name: "Bone GUCCI Beisebol 25", category: "Acessórios", price: 155.01, image: "", tag: "GRIFE", affiliateLink: "https://s.shopee.com.br/4LKbllbvsd" },
-    { id: "default-7", name: "Casaco Trapstar Variados", category: "Casaco", price: 280.96, image: "", tag: "US DRIP", affiliateLink: "https://s.shopee.com.br/4fxSAXKSKW" },
-    { id: "default-8", name: "Casaco SYNA WORLD Variados", category: "Casaco", price: 220.51, image: "", tag: "US DRIP", affiliateLink: "https://s.shopee.com.br/AKbouyk7YN" }
+    { id: "default-1", name: "Nike Tech Fleece 2025", category: "Casaco", price: 263.61, image: "assets/Produtos/NikeTechPreta25.jpg", tag: "Casaco Tech", affiliateLink: "https://s.shopee.com.br/9V2huXndk8" },
+    { id: "default-2", name: "Nike Tech Fleece Nocta 2024", category: "Casaco", price: 263.61, image: "", tag: "Casaco Tech", affiliateLink: "https://s.shopee.com.br/AAIOiCO1lc" },
+    { id: "default-3", name: "Nike Tech Fleece 2024", category: "Casaco", price: 263.61, image: "assets/Produtos/NikeTechcinza24.jpg", tag: "Casaco Tech", affiliateLink: "https://s.shopee.com.br/8pn17sBuv6" },
+    { id: "default-4", name: "Nike Tech Fleece SYNA 2024", category: "Casaco", price: 263.61, image: "", tag: "Casaco Tech", affiliateLink: "https://s.shopee.com.br/5fpzM4alby" },
+    { id: "default-5", name: "Balaclava Nike Pro", category: "Acessórios", price: 71.65, image: "assets/Produtos/BalaclavaNike.jpg", tag: "Acessorios", affiliateLink: "https://s.shopee.com.br/3B8eNZzFnH" },
+    { id: "default-6", name: "Bone GUCCI Beisebol 25", category: "Acessórios", price: 155.01, image: "", tag: "Bone", affiliateLink: "https://s.shopee.com.br/4LKbllbvsd" },
+    { id: "default-7", name: "Casaco Trapstar Variados", category: "Casaco", price: 280.96, image: "", tag: "Casaco", affiliateLink: "https://s.shopee.com.br/4fxSAXKSKW" },
+    { id: "default-8", name: "Casaco SYNA WORLD Variados", category: "Casaco", price: 220.51, image: "", tag: "Casaco", affiliateLink: "https://s.shopee.com.br/AKbouyk7YN" }
 ];
 
 function openADRDatabase() {
