@@ -1,3 +1,4 @@
+
 const db = window.supabase.createClient(
     window.ADR_SUPABASE_URL,
     window.ADR_SUPABASE_KEY
@@ -12,27 +13,44 @@ const statusMessage = document.getElementById("status");
 const productsContainer = document.getElementById("admin-products");
 
 let currentImageUrl = "";
+let saving = false;
+
+// ELEMENTOS
+const saveButton = document.getElementById("save-button");
+const cancelButton = document.getElementById("cancel-edit");
+
+// MENSAGENS
+function showStatus(message, type = "") {
+    statusMessage.textContent = message;
+    statusMessage.dataset.type = type;
+}
 
 // LOGIN
 loginForm.addEventListener("submit", async (e) => {
     e.preventDefault();
 
+    const button = document.getElementById("login-button");
+    button.disabled = true;
     loginStatus.textContent = "Entrando...";
 
-    const email = document.getElementById("login-email").value;
-    const password = document.getElementById("login-password").value;
+    try {
+        const email = document.getElementById("login-email").value.trim();
+        const password = document.getElementById("login-password").value;
 
-    const { data, error } = await db.auth.signInWithPassword({
-        email,
-        password
-    });
+        const { data, error } = await db.auth.signInWithPassword({
+            email,
+            password
+        });
 
-    if (error) {
+        if (error) throw error;
+
+        await checkAdmin(data.user);
+
+    } catch (error) {
         loginStatus.textContent = "Erro: " + error.message;
-        return;
+    } finally {
+        button.disabled = false;
     }
-
-    await checkAdmin(data.user);
 });
 
 // VERIFICAR ADMINISTRADOR
@@ -45,7 +63,8 @@ async function checkAdmin(user) {
 
     if (error || !profile || profile.role !== "admin") {
         await db.auth.signOut();
-        loginStatus.textContent = "Acesso permitido somente para administradores.";
+        loginStatus.textContent =
+            "Acesso permitido somente para administradores.";
         return;
     }
 
@@ -65,7 +84,7 @@ document.getElementById("logout-button").addEventListener("click", async () => {
 
 // CARREGAR PRODUTOS
 async function loadProducts() {
-    productsContainer.innerHTML = "Carregando produtos...";
+    productsContainer.textContent = "Carregando produtos...";
 
     const { data, error } = await db
         .from("products")
@@ -73,13 +92,14 @@ async function loadProducts() {
         .order("created_at", { ascending: false });
 
     if (error) {
-        productsContainer.textContent = "Erro ao carregar: " + error.message;
+        productsContainer.textContent =
+            "Erro ao carregar: " + error.message;
         return;
     }
 
     productsContainer.innerHTML = "";
 
-    if (!data.length) {
+    if (!data || data.length === 0) {
         productsContainer.textContent = "Nenhum produto cadastrado.";
         return;
     }
@@ -88,51 +108,78 @@ async function loadProducts() {
         const item = document.createElement("div");
         item.className = "admin-product";
 
-        item.innerHTML = `
-            <img src="${escapeHTML(product.image_url || "")}"
-                 alt="${escapeHTML(product.name)}"
-                 style="width:80px;height:80px;object-fit:cover;">
+        const image = document.createElement("img");
+        image.src = product.image_url || "";
+        image.alt = product.name;
+        image.style.cssText =
+            "width:80px;height:80px;object-fit:cover;";
 
-            <div>
-                <h3>${escapeHTML(product.name)}</h3>
-                <p>R$ ${Number(product.price).toFixed(2)}</p>
-                <p>${escapeHTML(product.category || "")}</p>
+        const info = document.createElement("div");
 
-                <button type="button" class="edit-button">Editar</button>
-                <button type="button" class="delete-button">Excluir</button>
-            </div>
-        `;
+        const name = document.createElement("h3");
+        name.textContent = product.name;
 
-        item.querySelector(".edit-button").addEventListener("click", () => {
+        const price = document.createElement("p");
+        price.textContent = Number(product.price).toLocaleString(
+            "pt-BR",
+            { style: "currency", currency: "BRL" }
+        );
+
+        const category = document.createElement("p");
+        category.textContent = product.category || "";
+
+        const editButton = document.createElement("button");
+        editButton.type = "button";
+        editButton.className = "edit-button";
+        editButton.textContent = "Editar";
+
+        editButton.addEventListener("click", () => {
             editProduct(product);
         });
 
-        item.querySelector(".delete-button").addEventListener("click", () => {
-            deleteProduct(product.id);
+        const deleteButton = document.createElement("button");
+        deleteButton.type = "button";
+        deleteButton.className = "delete-button";
+        deleteButton.textContent = "Excluir";
+
+        deleteButton.addEventListener("click", () => {
+            deleteProduct(product);
         });
 
+        info.append(name, price, category, editButton, deleteButton);
+        item.append(image, info);
         productsContainer.appendChild(item);
     });
 }
 
-// EVITAR INSERÇÃO DE HTML INDESEJADO
-function escapeHTML(value) {
-    return String(value).replace(/[&<>"']/g, char => ({
-        "&": "&amp;",
-        "<": "&lt;",
-        ">": "&gt;",
-        '"': "&quot;",
-        "'": "&#039;"
-    })[char]);
+// LIMPAR FORMULÁRIO
+function resetProductForm() {
+    productForm.reset();
+    currentImageUrl = "";
+
+    document.getElementById("product-id").value = "";
+    document.getElementById("image-preview").innerHTML = "";
+
+    document.getElementById("form-title").textContent =
+        "Adicionar produto";
+
+    cancelButton.hidden = true;
+    saveButton.textContent = "Salvar produto";
+
+    showStatus("");
 }
 
 // CADASTRAR OU EDITAR
 productForm.addEventListener("submit", async (e) => {
     e.preventDefault();
 
-    const saveButton = document.getElementById("save-button");
+    if (saving) return;
+
+    saving = true;
     saveButton.disabled = true;
-    statusMessage.textContent = "Salvando produto...";
+    showStatus("Salvando produto...");
+
+    let uploadedPath = null;
 
     try {
         const id = document.getElementById("product-id").value;
@@ -161,6 +208,8 @@ productForm.addEventListener("submit", async (e) => {
 
             if (uploadError) throw uploadError;
 
+            uploadedPath = fileName;
+
             const { data: publicData } = db.storage
                 .from("product-images")
                 .getPublicUrl(fileName);
@@ -172,9 +221,25 @@ productForm.addEventListener("submit", async (e) => {
             throw new Error("Selecione uma imagem para o produto.");
         }
 
-        const affiliateLink = document.getElementById("affiliate").value.trim();
+        const affiliateLink =
+            document.getElementById("affiliate").value.trim();
 
-        if (!/^https:\/\/(www\.)?(shopee\.com\.br|s\.shopee\.com\.br)\//i.test(affiliateLink)) {
+        let parsedLink;
+
+        try {
+            parsedLink = new URL(affiliateLink);
+        } catch {
+            throw new Error("Informe um link válido da Shopee.");
+        }
+
+        const host = parsedLink.hostname.toLowerCase();
+
+        if (
+            parsedLink.protocol !== "https:" ||
+            !(host === "shopee.com.br" ||
+              host.endsWith(".shopee.com.br") ||
+              host === "s.shopee.com.br")
+        ) {
             throw new Error("Informe um link válido da Shopee.");
         }
 
@@ -187,6 +252,10 @@ productForm.addEventListener("submit", async (e) => {
             image_url: imageUrl,
             is_active: true
         };
+
+        if (!product.name || !Number.isFinite(product.price) || product.price <= 0) {
+            throw new Error("Confira o nome e o preço do produto.");
+        }
 
         let result;
 
@@ -203,24 +272,31 @@ productForm.addEventListener("submit", async (e) => {
 
         if (result.error) throw result.error;
 
-        statusMessage.textContent = "Produto salvo com sucesso!";
-        productForm.reset();
-        currentImageUrl = "";
-        document.getElementById("product-id").value = "";
-        document.getElementById("image-preview").innerHTML = "";
-        document.getElementById("cancel-edit").hidden = true;
-        document.getElementById("form-title").textContent = "Adicionar produto";
+        showStatus(
+            id ? "Produto atualizado com sucesso!" : "Produto cadastrado com sucesso!",
+            "success"
+        );
 
+        resetProductForm();
         await loadProducts();
 
     } catch (error) {
-        statusMessage.textContent = "Erro: " + error.message;
+        // Remove imagem recém-enviada se o cadastro/edição falhar.
+        if (uploadedPath) {
+            await db.storage
+                .from("product-images")
+                .remove([uploadedPath]);
+        }
+
+        showStatus("Erro: " + error.message, "error");
+
     } finally {
+        saving = false;
         saveButton.disabled = false;
     }
 });
 
-// EDITAR
+// EDITAR PRODUTO
 function editProduct(product) {
     document.getElementById("product-id").value = product.id;
     document.getElementById("name").value = product.name;
@@ -231,48 +307,66 @@ function editProduct(product) {
 
     currentImageUrl = product.image_url || "";
 
-    document.getElementById("image-preview").innerHTML = currentImageUrl
-        ? `<img src="${escapeHTML(currentImageUrl)}" style="width:120px;height:120px;object-fit:cover;">`
-        : "";
+    const preview = document.getElementById("image-preview");
+    preview.innerHTML = "";
+
+    if (currentImageUrl) {
+        const image = document.createElement("img");
+        image.src = currentImageUrl;
+        image.alt = "Imagem atual do produto";
+        image.style.cssText =
+            "width:120px;height:120px;object-fit:cover;";
+        preview.appendChild(image);
+    }
 
     document.getElementById("form-title").textContent = "Editar produto";
-    document.getElementById("cancel-edit").hidden = false;
+    saveButton.textContent = "Salvar alterações";
+    cancelButton.hidden = false;
+
+    showStatus("Editando: " + product.name);
 
     window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 // CANCELAR EDIÇÃO
-document.getElementById("cancel-edit").addEventListener("click", () => {
-    productForm.reset();
-    currentImageUrl = "";
-    document.getElementById("product-id").value = "";
-    document.getElementById("image-preview").innerHTML = "";
-    document.getElementById("form-title").textContent = "Adicionar produto";
-    document.getElementById("cancel-edit").hidden = true;
-    statusMessage.textContent = "";
-});
+cancelButton.addEventListener("click", resetProductForm);
 
-// EXCLUIR
-async function deleteProduct(id) {
-    if (!confirm("Tem certeza que deseja excluir este produto?")) return;
+// EXCLUIR PRODUTO
+async function deleteProduct(product) {
+    const confirmed = confirm(
+        `Tem certeza que deseja excluir "${product.name}"?`
+    );
+
+    if (!confirmed) return;
+
+    showStatus("Excluindo produto...");
 
     const { error } = await db
         .from("products")
         .delete()
-        .eq("id", id);
+        .eq("id", product.id);
 
     if (error) {
-        statusMessage.textContent = "Erro ao excluir: " + error.message;
+        showStatus("Erro ao excluir: " + error.message, "error");
         return;
     }
 
-    statusMessage.textContent = "Produto excluído!";
+    if (document.getElementById("product-id").value === product.id) {
+        resetProductForm();
+    }
+
+    showStatus("Produto excluído com sucesso!", "success");
     await loadProducts();
 }
 
-// VERIFICAR SESSÃO EXISTENTE
+// VERIFICAR SESSÃO
 async function checkSession() {
-    const { data } = await db.auth.getSession();
+    const { data, error } = await db.auth.getSession();
+
+    if (error) {
+        loginStatus.textContent = "Erro ao verificar sessão.";
+        return;
+    }
 
     if (data.session) {
         await checkAdmin(data.session.user);
