@@ -7,33 +7,58 @@ const productGrid = document.getElementById("product-grid");
 const searchInput = document.getElementById("search");
 
 let allProducts = [];
+let selectedCategory = "all";
 
-// CARREGAR PRODUTOS DO SUPABASE
+// CARREGAR PRODUTOS
 async function loadProducts() {
-    productGrid.innerHTML = "<p>Carregando produtos...</p>";
+    productGrid.innerHTML = '<p class="empty-message">CARREGANDO PRODUTOS...</p>';
 
-    const { data, error } = await db
-        .from("products")
-        .select("id, name, description, category, price, tag, image_url, affiliate_url")
-        .eq("is_active", true)
-        .order("created_at", { ascending: false });
+    try {
+        const { data, error } = await db
+            .from("products")
+            .select("*")
+            .eq("is_active", true)
+            .order("created_at", { ascending: false });
 
-    if (error) {
-        productGrid.innerHTML = "<p>Não foi possível carregar os produtos.</p>";
-        console.error(error);
-        return;
+        if (error) throw error;
+
+        allProducts = data || [];
+
+        renderProducts();
+
+    } catch (error) {
+        console.error("Erro ao carregar produtos:", error);
+
+        productGrid.innerHTML =
+            '<p class="empty-message">NÃO FOI POSSÍVEL CARREGAR OS PRODUTOS.</p>';
     }
-
-    allProducts = data || [];
-    renderProducts(allProducts);
 }
 
 // EXIBIR PRODUTOS
-function renderProducts(products) {
+function renderProducts() {
     productGrid.innerHTML = "";
 
+    let products = allProducts;
+
+    if (selectedCategory !== "all") {
+        products = products.filter(
+            product => product.category === selectedCategory
+        );
+    }
+
+    if (searchInput) {
+        const search = searchInput.value.toLowerCase();
+
+        products = products.filter(product =>
+            (product.name || "").toLowerCase().includes(search) ||
+            (product.category || "").toLowerCase().includes(search) ||
+            (product.tag || "").toLowerCase().includes(search)
+        );
+    }
+
     if (!products.length) {
-        productGrid.innerHTML = "<p>Nenhum produto encontrado.</p>";
+        productGrid.innerHTML =
+            '<p class="empty-message">NENHUM PRODUTO ENCONTRADO.</p>';
         return;
     }
 
@@ -41,45 +66,63 @@ function renderProducts(products) {
         const card = document.createElement("div");
         card.className = "product-card";
 
+        // IMAGEM
+        const imageContainer = document.createElement("div");
+        imageContainer.className = "product-image";
+
         const image = document.createElement("img");
         image.src = product.image_url || "";
-        image.alt = product.name;
+        image.alt = product.name || "Produto ADR";
         image.loading = "lazy";
 
+        image.onerror = () => {
+            image.alt = "Imagem indisponível";
+        };
+
+        imageContainer.appendChild(image);
+
+        // ETIQUETA
+        if (product.tag) {
+            const tag = document.createElement("span");
+            tag.className = "product-tag";
+            tag.textContent = product.tag;
+
+            imageContainer.appendChild(tag);
+        }
+
+        // INFORMAÇÕES
         const info = document.createElement("div");
         info.className = "product-info";
 
-        const name = document.createElement("h3");
-        name.textContent = product.name;
+        const category = document.createElement("span");
+        category.className = "product-category";
+        category.textContent = product.category || "";
 
-        const tag = document.createElement("span");
-        tag.className = "product-tag";
-        tag.textContent = product.tag || "";
+        const name = document.createElement("h3");
+        name.textContent = product.name || "Produto ADR";
 
         const price = document.createElement("p");
         price.className = "product-price";
+
         price.textContent = Number(product.price).toLocaleString("pt-BR", {
             style: "currency",
             currency: "BRL"
         });
 
+        // BOTÃO
         const button = document.createElement("a");
-        button.className = "product-button";
-        button.href = product.affiliate_url;
+        button.className = "buy-button";
+        button.href = product.affiliate_url || "#";
         button.target = "_blank";
         button.rel = "noopener noreferrer";
-        button.textContent = "Ver na Shopee";
+        button.textContent = "VER NA SHOPEE ↗";
 
+        info.appendChild(category);
         info.appendChild(name);
-
-        if (product.tag) {
-            info.appendChild(tag);
-        }
-
         info.appendChild(price);
         info.appendChild(button);
 
-        card.appendChild(image);
+        card.appendChild(imageContainer);
         card.appendChild(info);
 
         productGrid.appendChild(card);
@@ -88,31 +131,21 @@ function renderProducts(products) {
 
 // PESQUISA
 if (searchInput) {
-    searchInput.addEventListener("input", () => {
-        const search = searchInput.value.toLowerCase();
-
-        const filtered = allProducts.filter(product =>
-            product.name.toLowerCase().includes(search) ||
-            (product.category || "").toLowerCase().includes(search) ||
-            (product.tag || "").toLowerCase().includes(search)
-        );
-
-        renderProducts(filtered);
-    });
+    searchInput.addEventListener("input", renderProducts);
 }
 
-// FILTRO DE CATEGORIAS
+// CATEGORIAS
 document.querySelectorAll("[data-category]").forEach(button => {
     button.addEventListener("click", () => {
-        const category = button.dataset.category;
+        selectedCategory = button.dataset.category;
 
-        if (category === "all") {
-            renderProducts(allProducts);
-        } else {
-            renderProducts(
-                allProducts.filter(product => product.category === category)
-            );
-        }
+        document.querySelectorAll("[data-category]").forEach(item => {
+            item.classList.remove("active");
+        });
+
+        button.classList.add("active");
+
+        renderProducts();
     });
 });
 
