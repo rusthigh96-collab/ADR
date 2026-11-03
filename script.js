@@ -1,3 +1,4 @@
+
 const db = window.supabase.createClient(
     window.ADR_SUPABASE_URL,
     window.ADR_SUPABASE_KEY
@@ -23,7 +24,6 @@ async function loadProducts() {
         if (error) throw error;
 
         allProducts = data || [];
-
         renderProducts();
 
     } catch (error) {
@@ -65,6 +65,13 @@ function renderProducts() {
     products.forEach(product => {
         const card = document.createElement("div");
         card.className = "product-card";
+        card.style.cursor = "pointer";
+
+        // ABRIR DETALHES
+        const openProduct = () => {
+            window.location.href =
+                `produto.html?id=${encodeURIComponent(product.id)}`;
+        };
 
         // IMAGEM
         const imageContainer = document.createElement("div");
@@ -86,7 +93,6 @@ function renderProducts() {
             const tag = document.createElement("span");
             tag.className = "product-tag";
             tag.textContent = product.tag;
-
             imageContainer.appendChild(tag);
         }
 
@@ -109,13 +115,18 @@ function renderProducts() {
             currency: "BRL"
         });
 
-        // BOTÃO
-        const button = document.createElement("a");
+        // BOTÃO VER DETALHES
+        const button = document.createElement("button");
         button.className = "buy-button";
-        button.href = product.affiliate_url || "#";
-        button.target = "_blank";
-        button.rel = "noopener noreferrer";
-        button.textContent = "VER NA SHOPEE ↗";
+        button.type = "button";
+        button.textContent = "VER DETALHES →";
+        button.style.width = "100%";
+        button.style.border = "none";
+        button.style.cursor = "pointer";
+
+        button.addEventListener("click", openProduct);
+        imageContainer.addEventListener("click", openProduct);
+        name.addEventListener("click", openProduct);
 
         info.appendChild(category);
         info.appendChild(name);
