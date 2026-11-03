@@ -1,175 +1,282 @@
-const DB_NAME = "adrStoreDB";
-const STORE_NAME = "products";
-const form = document.getElementById("product-form");
-const list = document.getElementById("admin-products");
-const statusLine = document.getElementById("status");
-const imageInput = document.getElementById("image");
-const preview = document.getElementById("image-preview");
-let selectedImageData = "";
+const db = window.supabase.createClient(
+    window.ADR_SUPABASE_URL,
+    window.ADR_SUPABASE_KEY
+);
 
-function openDB() {
-    return new Promise((resolve, reject) => {
-        const request = indexedDB.open(DB_NAME, 1);
-        request.onupgradeneeded = () => {
-            if (!request.result.objectStoreNames.contains(STORE_NAME)) {
-                request.result.createObjectStore(STORE_NAME, { keyPath: "id" });
-            }
-        };
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error);
+const loginForm = document.getElementById("login-form");
+const loginPanel = document.getElementById("login-panel");
+const dashboard = document.getElementById("admin-dashboard");
+const loginStatus = document.getElementById("login-status");
+const productForm = document.getElementById("product-form");
+const statusMessage = document.getElementById("status");
+const productsContainer = document.getElementById("admin-products");
+
+let currentImageUrl = "";
+
+// LOGIN
+loginForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    loginStatus.textContent = "Entrando...";
+
+    const email = document.getElementById("login-email").value;
+    const password = document.getElementById("login-password").value;
+
+    const { data, error } = await db.auth.signInWithPassword({
+        email,
+        password
+    });
+
+    if (error) {
+        loginStatus.textContent = "Erro: " + error.message;
+        return;
+    }
+
+    await checkAdmin(data.user);
+});
+
+// VERIFICAR ADMINISTRADOR
+async function checkAdmin(user) {
+    const { data: profile, error } = await db
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .single();
+
+    if (error || !profile || profile.role !== "admin") {
+        await db.auth.signOut();
+        loginStatus.textContent = "Acesso permitido somente para administradores.";
+        return;
+    }
+
+    loginPanel.hidden = true;
+    dashboard.hidden = false;
+
+    document.getElementById("admin-user").textContent = user.email;
+
+    await loadProducts();
+}
+
+// SAIR
+document.getElementById("logout-button").addEventListener("click", async () => {
+    await db.auth.signOut();
+    location.reload();
+});
+
+// CARREGAR PRODUTOS
+async function loadProducts() {
+    productsContainer.innerHTML = "Carregando produtos...";
+
+    const { data, error } = await db
+        .from("products")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+    if (error) {
+        productsContainer.textContent = "Erro ao carregar: " + error.message;
+        return;
+    }
+
+    productsContainer.innerHTML = "";
+
+    if (!data.length) {
+        productsContainer.textContent = "Nenhum produto cadastrado.";
+        return;
+    }
+
+    data.forEach(product => {
+        const item = document.createElement("div");
+        item.className = "admin-product";
+
+        item.innerHTML = `
+            <img src="${escapeHTML(product.image_url || "")}"
+                 alt="${escapeHTML(product.name)}"
+                 style="width:80px;height:80px;object-fit:cover;">
+
+            <div>
+                <h3>${escapeHTML(product.name)}</h3>
+                <p>R$ ${Number(product.price).toFixed(2)}</p>
+                <p>${escapeHTML(product.category || "")}</p>
+
+                <button type="button" class="edit-button">Editar</button>
+                <button type="button" class="delete-button">Excluir</button>
+            </div>
+        `;
+
+        item.querySelector(".edit-button").addEventListener("click", () => {
+            editProduct(product);
+        });
+
+        item.querySelector(".delete-button").addEventListener("click", () => {
+            deleteProduct(product.id);
+        });
+
+        productsContainer.appendChild(item);
     });
 }
-async function allProducts() {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-        const req = db.transaction(STORE_NAME, "readonly").objectStore(STORE_NAME).getAll();
-        req.onsuccess = () => { db.close(); resolve(req.result); };
-        req.onerror = () => { db.close(); reject(req.error); };
-    });
-}
-async function putProduct(product) {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-        const req = db.transaction(STORE_NAME, "readwrite").objectStore(STORE_NAME).put(product);
-        req.onsuccess = () => { db.close(); resolve(); };
-        req.onerror = () => { db.close(); reject(req.error); };
-    });
-}
-async function deleteProduct(id) {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-        const req = db.transaction(STORE_NAME, "readwrite").objectStore(STORE_NAME).delete(id);
-        req.onsuccess = () => { db.close(); resolve(); };
-        req.onerror = () => { db.close(); reject(req.error); };
-    });
-}
+
+// EVITAR INSERÇÃO DE HTML INDESEJADO
 function escapeHTML(value) {
-    return String(value ?? "").replace(/[&<>"']/g, char => ({
-        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    return String(value).replace(/[&<>"']/g, char => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#039;"
     })[char]);
 }
-function showStatus(message, isError = false) {
-    statusLine.textContent = message;
-    statusLine.style.color = isError ? "#ff9b9b" : "#c6ff00";
-}
-imageInput.addEventListener("change", () => {
-    const file = imageInput.files[0];
-    if (!file) return;
-    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
-        imageInput.value = "";
-        showStatus("Escolha uma imagem JPG, PNG ou WEBP.", true);
-        return;
+
+// CADASTRAR OU EDITAR
+productForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    const saveButton = document.getElementById("save-button");
+    saveButton.disabled = true;
+    statusMessage.textContent = "Salvando produto...";
+
+    try {
+        const id = document.getElementById("product-id").value;
+        const imageFile = document.getElementById("image").files[0];
+
+        let imageUrl = currentImageUrl;
+
+        if (imageFile) {
+            if (imageFile.size > 5 * 1024 * 1024) {
+                throw new Error("A imagem deve ter no máximo 5 MB.");
+            }
+
+            if (!["image/jpeg", "image/png", "image/webp"].includes(imageFile.type)) {
+                throw new Error("Use uma imagem JPG, PNG ou WEBP.");
+            }
+
+            const extension = imageFile.name.split(".").pop().toLowerCase();
+            const fileName = `${crypto.randomUUID()}.${extension}`;
+
+            const { error: uploadError } = await db.storage
+                .from("product-images")
+                .upload(fileName, imageFile, {
+                    upsert: false,
+                    contentType: imageFile.type
+                });
+
+            if (uploadError) throw uploadError;
+
+            const { data: publicData } = db.storage
+                .from("product-images")
+                .getPublicUrl(fileName);
+
+            imageUrl = publicData.publicUrl;
+        }
+
+        if (!imageUrl) {
+            throw new Error("Selecione uma imagem para o produto.");
+        }
+
+        const affiliateLink = document.getElementById("affiliate").value.trim();
+
+        if (!/^https:\/\/(www\.)?(shopee\.com\.br|s\.shopee\.com\.br)\//i.test(affiliateLink)) {
+            throw new Error("Informe um link válido da Shopee.");
+        }
+
+        const product = {
+            name: document.getElementById("name").value.trim(),
+            category: document.getElementById("category").value,
+            price: Number(document.getElementById("price").value),
+            tag: document.getElementById("tag").value.trim(),
+            affiliate_url: affiliateLink,
+            image_url: imageUrl,
+            is_active: true
+        };
+
+        let result;
+
+        if (id) {
+            result = await db
+                .from("products")
+                .update(product)
+                .eq("id", id);
+        } else {
+            result = await db
+                .from("products")
+                .insert([product]);
+        }
+
+        if (result.error) throw result.error;
+
+        statusMessage.textContent = "Produto salvo com sucesso!";
+        productForm.reset();
+        currentImageUrl = "";
+        document.getElementById("product-id").value = "";
+        document.getElementById("image-preview").innerHTML = "";
+        document.getElementById("cancel-edit").hidden = true;
+        document.getElementById("form-title").textContent = "Adicionar produto";
+
+        await loadProducts();
+
+    } catch (error) {
+        statusMessage.textContent = "Erro: " + error.message;
+    } finally {
+        saveButton.disabled = false;
     }
-    if (file.size > 5 * 1024 * 1024) {
-        imageInput.value = "";
-        showStatus("A imagem passou de 5 MB. Escolha uma foto menor.", true);
-        return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-        selectedImageData = reader.result;
-        preview.src = selectedImageData;
-        preview.style.display = "block";
-        showStatus("Foto carregada. Agora salve o produto.");
-    };
-    reader.onerror = () => showStatus("Não foi possível ler essa imagem.", true);
-    reader.readAsDataURL(file);
 });
-function resetForm() {
-    form.reset();
-    document.getElementById("product-id").value = "";
-    selectedImageData = "";
-    preview.src = "";
-    preview.style.display = "none";
-    document.getElementById("form-title").innerHTML = 'ADD NEW <span>PRODUCT.</span>';
-    document.getElementById("save-button").textContent = "SAVE PRODUCT ↗";
-    document.getElementById("cancel-edit").hidden = true;
-}
-async function renderAdminProducts() {
-    const products = await allProducts();
-    if (!products.length) {
-        list.innerHTML = '<p class="admin-note">Nenhum produto cadastrado ainda.</p>';
-        return;
-    }
-    list.innerHTML = products.map(product => `
-        <article class="admin-product">
-            <img src="${escapeHTML(product.image || "")}" alt="">
-            <div class="admin-product-info">
-                <strong>${escapeHTML(product.name)}</strong>
-                <span>R$ ${Number(product.price).toFixed(2).replace(".", ",")} · ${escapeHTML(product.category)}</span>
-                <button class="admin-secondary edit-product" data-id="${escapeHTML(product.id)}" type="button">EDITAR</button>
-                <button class="delete-button remove-product" data-id="${escapeHTML(product.id)}" type="button">EXCLUIR</button>
-            </div>
-        </article>`).join("");
-    list.querySelectorAll(".edit-product").forEach(button => button.addEventListener("click", () => editProduct(button.dataset.id)));
-    list.querySelectorAll(".remove-product").forEach(button => button.addEventListener("click", () => removeProduct(button.dataset.id)));
-}
-async function editProduct(id) {
-    const product = (await allProducts()).find(item => item.id === id);
-    if (!product) return;
+
+// EDITAR
+function editProduct(product) {
     document.getElementById("product-id").value = product.id;
     document.getElementById("name").value = product.name;
     document.getElementById("category").value = product.category;
     document.getElementById("price").value = product.price;
     document.getElementById("tag").value = product.tag || "";
-    document.getElementById("affiliate").value = product.affiliateLink || "";
-    selectedImageData = product.image || "";
-    if (selectedImageData) {
-        preview.src = selectedImageData;
-        preview.style.display = "block";
-    } else {
-        preview.style.display = "none";
-    }
-    document.getElementById("form-title").innerHTML = 'EDIT <span>PRODUCT.</span>';
-    document.getElementById("save-button").textContent = "UPDATE PRODUCT ↗";
+    document.getElementById("affiliate").value = product.affiliate_url;
+
+    currentImageUrl = product.image_url || "";
+
+    document.getElementById("image-preview").innerHTML = currentImageUrl
+        ? `<img src="${escapeHTML(currentImageUrl)}" style="width:120px;height:120px;object-fit:cover;">`
+        : "";
+
+    document.getElementById("form-title").textContent = "Editar produto";
     document.getElementById("cancel-edit").hidden = false;
-    showStatus("Editando produto. Se não escolher outra foto, a imagem atual será mantida.");
+
     window.scrollTo({ top: 0, behavior: "smooth" });
 }
-async function removeProduct(id) {
-    const confirmed = window.confirm("Tem certeza que deseja excluir este produto do catálogo?");
-    if (!confirmed) return;
-    await deleteProduct(id);
-    await renderAdminProducts();
-    showStatus("Produto excluído do catálogo.");
+
+// CANCELAR EDIÇÃO
+document.getElementById("cancel-edit").addEventListener("click", () => {
+    productForm.reset();
+    currentImageUrl = "";
+    document.getElementById("product-id").value = "";
+    document.getElementById("image-preview").innerHTML = "";
+    document.getElementById("form-title").textContent = "Adicionar produto";
+    document.getElementById("cancel-edit").hidden = true;
+    statusMessage.textContent = "";
+});
+
+// EXCLUIR
+async function deleteProduct(id) {
+    if (!confirm("Tem certeza que deseja excluir este produto?")) return;
+
+    const { error } = await db
+        .from("products")
+        .delete()
+        .eq("id", id);
+
+    if (error) {
+        statusMessage.textContent = "Erro ao excluir: " + error.message;
+        return;
+    }
+
+    statusMessage.textContent = "Produto excluído!";
+    await loadProducts();
 }
-form.addEventListener("submit", async event => {
-    event.preventDefault();
-    const id = document.getElementById("product-id").value || `adr-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    const oldProduct = (await allProducts()).find(item => item.id === id);
-    const name = document.getElementById("name").value.trim();
-    const price = Number(document.getElementById("price").value);
-    const affiliateLink = document.getElementById("affiliate").value.trim();
-    if (!/^https:\/\/(s\.shopee\.com\.br|shopee\.com\.br|www\.shopee\.com\.br)\//i.test(affiliateLink)) {
-        showStatus("Cole um link HTTPS válido da Shopee.", true);
-        return;
+
+// VERIFICAR SESSÃO EXISTENTE
+async function checkSession() {
+    const { data } = await db.auth.getSession();
+
+    if (data.session) {
+        await checkAdmin(data.session.user);
     }
-    const image = selectedImageData || oldProduct?.image || "";
-    if (!image) {
-        showStatus("Selecione uma foto para o produto.", true);
-        return;
-    }
-    const product = {
-        id,
-        name,
-        category: document.getElementById("category").value,
-        price,
-        tag: document.getElementById("tag").value.trim() || "ADR SELECT",
-        affiliateLink,
-        image
-    };
-    try {
-        await putProduct(product);
-        resetForm();
-        await renderAdminProducts();
-        showStatus("Produto salvo! Atualize a página da loja ADR para conferir.");
-    } catch (error) {
-        console.error(error);
-        showStatus("Não foi possível salvar. Tente uma imagem menor ou libere espaço no navegador.", true);
-    }
-});
-document.getElementById("cancel-edit").addEventListener("click", resetForm);
-renderAdminProducts().catch(error => {
-    console.error(error);
-    showStatus("Erro ao abrir o banco local deste navegador.", true);
-});
+}
+
+checkSession();
