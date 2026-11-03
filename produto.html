@@ -1,0 +1,339 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Produto | ADR — DRIP CULTURE</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .detail-wrap {
+            width: min(1150px, 92%);
+            margin: auto;
+            padding: 50px 0 90px;
+        }
+
+        .back-link {
+            display: inline-block;
+            color: var(--accent);
+            font-size: 11px;
+            font-weight: 800;
+            margin-bottom: 35px;
+        }
+
+        .detail-grid {
+            display: grid;
+            grid-template-columns: 1.1fr 1fr;
+            gap: 55px;
+        }
+
+        .gallery-main {
+            background: #151515;
+            border: 1px solid #292929;
+            border-radius: 12px;
+            overflow: hidden;
+            aspect-ratio: 1 / 1;
+        }
+
+        .gallery-main img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .gallery-thumbs {
+            display: flex;
+            gap: 12px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+
+        .gallery-thumbs img {
+            width: 75px;
+            height: 75px;
+            object-fit: cover;
+            border: 1px solid #333;
+            border-radius: 7px;
+            cursor: pointer;
+        }
+
+        .gallery-thumbs img.active {
+            border: 2px solid var(--accent);
+        }
+
+        .detail-category {
+            color: var(--accent);
+            font-size: 11px;
+            letter-spacing: 2px;
+            font-weight: 800;
+        }
+
+        .detail-info h1 {
+            font-family: 'Barlow Condensed', sans-serif;
+            font-size: clamp(35px, 5vw, 60px);
+            margin: 15px 0;
+            line-height: 1;
+        }
+
+        .detail-price {
+            font-size: 32px;
+            font-weight: 900;
+            margin: 25px 0;
+        }
+
+        .detail-description {
+            color: #aaa;
+            font-size: 14px;
+            line-height: 1.9;
+            margin: 25px 0;
+            white-space: pre-line;
+        }
+
+        .detail-options {
+            margin: 25px 0;
+        }
+
+        .detail-options h3 {
+            font-size: 12px;
+            letter-spacing: 1px;
+            margin-bottom: 12px;
+        }
+
+        .option-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 9px;
+        }
+
+        .option-item {
+            background: #191919;
+            border: 1px solid #333;
+            padding: 10px 15px;
+            font-size: 12px;
+            color: #ddd;
+            border-radius: 5px;
+        }
+
+        .detail-buy {
+            display: block;
+            text-align: center;
+            background: var(--accent);
+            color: #080808;
+            padding: 19px;
+            font-size: 12px;
+            font-weight: 900;
+            letter-spacing: 1px;
+            margin-top: 30px;
+            border-radius: 5px;
+            transition: .3s;
+        }
+
+        .detail-buy:hover {
+            background: white;
+            transform: translateY(-3px);
+        }
+
+        .detail-tag {
+            display: inline-block;
+            background: var(--accent);
+            color: #080808;
+            padding: 7px 12px;
+            font-size: 10px;
+            font-weight: 900;
+            margin-bottom: 10px;
+        }
+
+        @media(max-width: 750px) {
+            .detail-grid {
+                grid-template-columns: 1fr;
+                gap: 30px;
+            }
+
+            .detail-wrap {
+                padding-top: 30px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+<header class="header">
+    <a href="index.html" class="logo">ADR<span>®</span></a>
+    <a href="index.html" class="admin-back">VOLTAR AO CATÁLOGO</a>
+</header>
+
+<main class="detail-wrap">
+
+    <a href="index.html" class="back-link">← VOLTAR PARA A ADR</a>
+
+    <div id="product-content">
+        <p class="empty-message">CARREGANDO PRODUTO...</p>
+    </div>
+
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<script>
+window.ADR_SUPABASE_URL = "https://gmlrmhnkjknlvombypwx.supabase.co";
+window.ADR_SUPABASE_KEY = "sb_publishable_YPSfUbLRl_tqBW3PETns5w_NcqOws5h";
+
+const db = window.supabase.createClient(
+    window.ADR_SUPABASE_URL,
+    window.ADR_SUPABASE_KEY
+);
+
+const content = document.getElementById("product-content");
+const params = new URLSearchParams(window.location.search);
+const productId = params.get("id");
+
+function formatPrice(price) {
+    return Number(price).toLocaleString("pt-BR", {
+        style: "currency",
+        currency: "BRL"
+    });
+}
+
+async function loadProduct() {
+    if (!productId) {
+        content.innerHTML = '<p class="empty-message">PRODUTO NÃO INFORMADO.</p>';
+        return;
+    }
+
+    try {
+        const { data: product, error } = await db
+            .from("products")
+            .select("*")
+            .eq("id", productId)
+            .eq("is_active", true)
+            .single();
+
+        if (error) throw error;
+
+        const images = [
+            product.image_url,
+            ...(product.images || [])
+        ].filter((url, index, array) =>
+            url && array.indexOf(url) === index
+        );
+
+        const sizes = product.sizes || [];
+        const colors = product.colors || [];
+
+        content.innerHTML = `
+            <div class="detail-grid">
+
+                <div>
+                    <div class="gallery-main">
+                        <img id="main-image"
+                             src="${images[0] || ''}"
+                             alt="Produto ADR">
+                    </div>
+
+                    <div class="gallery-thumbs" id="gallery-thumbs"></div>
+                </div>
+
+                <div class="detail-info">
+
+                    ${product.tag ? `<span class="detail-tag">${escapeHTML(product.tag)}</span>` : ''}
+
+                    <span class="detail-category">${escapeHTML(product.category || 'ADR')}</span>
+
+                    <h1>${escapeHTML(product.name)}</h1>
+
+                    <div class="detail-price">${formatPrice(product.price)}</div>
+
+                    <p class="detail-description">
+                        ${escapeHTML(product.description || 'Produto selecionado pela ADR DRIP CULTURE. Confira as informações e opções disponíveis no anúncio da Shopee.')}
+                    </p>
+
+                    ${sizes.length ? `
+                        <div class="detail-options">
+                            <h3>TAMANHOS</h3>
+                            <div class="option-list">
+                                ${sizes.map(size => `<span class="option-item">${escapeHTML(size)}</span>`).join('')}
+                            </div>
+                        </div>
+                    ` : ''}
+
+                    ${colors.length ? `
+                        <div class="detail-options">
+                            <h3>CORES</h3>
+                            <div class="option-list">
+                                ${colors.map(color => `<span class="option-item">${escapeHTML(color)}</span>`).join('')}
+                            </div>
+                        </div>
+                    ` : ''}
+
+                    <a class="detail-buy"
+                       href="${safeAffiliateURL(product.affiliate_url)}"
+                       target="_blank"
+                       rel="noopener noreferrer">
+                       COMPRAR NA SHOPEE ↗
+                    </a>
+
+                </div>
+            </div>
+        `;
+
+        const thumbs = document.getElementById("gallery-thumbs");
+        const mainImage = document.getElementById("main-image");
+
+        images.forEach((url, index) => {
+            const img = document.createElement("img");
+            img.src = url;
+            img.alt = `Foto ${index + 1}`;
+
+            if (index === 0) img.classList.add("active");
+
+            img.addEventListener("click", () => {
+                mainImage.src = url;
+                thumbs.querySelectorAll("img").forEach(item =>
+                    item.classList.remove("active")
+                );
+                img.classList.add("active");
+            });
+
+            thumbs.appendChild(img);
+        });
+
+        document.title = `${product.name} | ADR`;
+
+    } catch (error) {
+        console.error(error);
+        content.innerHTML = '<p class="empty-message">NÃO FOI POSSÍVEL ENCONTRAR ESSE PRODUTO.</p>';
+    }
+}
+
+function escapeHTML(value) {
+    return String(value ?? "").replace(/[&<>"']/g, char => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+    })[char]);
+}
+
+function safeAffiliateURL(value) {
+    try {
+        const url = new URL(value);
+
+        if (
+            url.protocol === "https:" &&
+            (url.hostname === "shopee.com.br" ||
+             url.hostname.endsWith(".shopee.com.br"))
+        ) {
+            return url.href;
+        }
+    } catch (error) {}
+
+    return "#";
+}
+
+loadProduct();
+</script>
+
+</body>
+</html>
