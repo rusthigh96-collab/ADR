@@ -99,6 +99,15 @@ async function loadProducts() {
 
     productsContainer.innerHTML = "";
 
+    // ATUALIZAR ESTATÍSTICAS
+    const total = data.length;
+    const active = data.filter(product => product.is_active).length;
+    const inactive = total - active;
+
+    document.getElementById("stat-total").textContent = total;
+    document.getElementById("stat-active").textContent = active;
+    document.getElementById("stat-inactive").textContent = inactive;
+
     if (!data || data.length === 0) {
         productsContainer.textContent = "Nenhum produto cadastrado.";
         return;
