@@ -1,385 +1,266 @@
+const DB_NAME = "adrStoreDB";
+const STORE_NAME = "products";
+const form = document.getElementById("product-form");
+const list = document.getElementById("admin-products");
+const statusLine = document.getElementById("status");
+const imageInput = document.getElementById("image");
+const preview = document.getElementById("image-preview");
 
-const db = window.supabase.createClient(
-    window.ADR_SUPABASE_URL,
-    window.ADR_SUPABASE_KEY
-);
+let selectedImageData = "";
 
-const loginForm = document.getElementById("login-form");
-const loginPanel = document.getElementById("login-panel");
-const dashboard = document.getElementById("admin-dashboard");
-const loginStatus = document.getElementById("login-status");
-const productForm = document.getElementById("product-form");
-const statusMessage = document.getElementById("status");
-const productsContainer = document.getElementById("admin-products");
+const CATEGORY_STORAGE_KEY = "adrCategories";
+const defaultCategories = [
+    { value: "Casaco", label: "Casacos" },
+    { value: "Sneakers", label: "Sneakers" },
+    { value: "Acessórios", label: "Acessórios" },
+    { value: "Tech", label: "Tech & Gadgets" },
+    { value: "Lifestyle", label: "Lifestyle" }
+];
 
-let currentImageUrl = "";
-let saving = false;
+function getCategories() {
+    try {
+        const saved = JSON.parse(localStorage.getItem(CATEGORY_STORAGE_KEY) || "[]");
+        const categories = [...defaultCategories];
 
-// ELEMENTOS
-const saveButton = document.getElementById("save-button");
-const cancelButton = document.getElementById("cancel-edit");
+        if (Array.isArray(saved)) {
+            saved.forEach(category => {
+                if (category && typeof category.value === "string" && typeof category.label === "string"
+                    && !categories.some(item => item.value.toLowerCase() === category.value.toLowerCase())) {
+                    categories.push(category);
+                }
+            });
+        }
 
-// MENSAGENS
-function showStatus(message, type = "") {
-    statusMessage.textContent = message;
-    statusMessage.dataset.type = type;
+        return categories;
+    } catch (error) {
+        console.error("Não foi possível carregar as categorias:", error);
+        return defaultCategories;
+    }
 }
 
-// LOGIN
-loginForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
+function renderCategories(selectedValue = "") {
+    const categorySelect = document.getElementById("category");
+    const categories = getCategories();
 
-    const button = document.getElementById("login-button");
-    button.disabled = true;
-    loginStatus.textContent = "Entrando...";
+    categorySelect.innerHTML = "";
+    categories.forEach(category => {
+        const option = document.createElement("option");
+        option.value = category.value;
+        option.textContent = category.label;
+        categorySelect.appendChild(option);
+    });
+
+    if (selectedValue && !categories.some(category => category.value === selectedValue)) {
+        const option = document.createElement("option");
+        option.value = selectedValue;
+        option.textContent = selectedValue;
+        categorySelect.appendChild(option);
+    }
+
+    if (selectedValue) categorySelect.value = selectedValue;
+}
+
+document.getElementById("create-category").addEventListener("click", () => {
+    const enteredName = window.prompt("Digite o nome da nova categoria:");
+    if (enteredName === null) return;
+
+    const name = enteredName.trim().replace(/\\s+/g, " ");
+    if (!name) {
+        showStatus("Digite um nome para a categoria.", true);
+        return;
+    }
+
+    const categories = getCategories();
+    const alreadyExists = categories.some(category =>
+        category.label.toLocaleLowerCase("pt-BR") === name.toLocaleLowerCase("pt-BR")
+    );
+
+    if (alreadyExists) {
+        showStatus("Essa categoria já existe.", true);
+        return;
+    }
+
+    categories.push({ value: name, label: name });
 
     try {
-        const email = document.getElementById("login-email").value.trim();
-        const password = document.getElementById("login-password").value;
-
-        const { data, error } = await db.auth.signInWithPassword({
-            email,
-            password
-        });
-
-        if (error) throw error;
-
-        await checkAdmin(data.user);
-
+        localStorage.setItem(CATEGORY_STORAGE_KEY, JSON.stringify(
+            categories.filter(category => !defaultCategories.some(item => item.value === category.value))
+        ));
+        renderCategories(name);
+        showStatus(`Categoria "${name}" criada! Agora você pode selecioná-la nos produtos.`);
     } catch (error) {
-        loginStatus.textContent = "Erro: " + error.message;
-    } finally {
-        button.disabled = false;
+        console.error(error);
+        showStatus("Não foi possível salvar a categoria neste navegador.", true);
     }
 });
 
-// VERIFICAR ADMINISTRADOR
-async function checkAdmin(user) {
-    const { data: profile, error } = await db
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .single();
 
-    if (error || !profile || profile.role !== "admin") {
-        await db.auth.signOut();
-        loginStatus.textContent =
-            "Acesso permitido somente para administradores.";
-        return;
-    }
-
-    loginPanel.hidden = true;
-    dashboard.hidden = false;
-
-    document.getElementById("admin-user").textContent = user.email;
-
-    await loadProducts();
-}
-
-// SAIR
-document.getElementById("logout-button").addEventListener("click", async () => {
-    await db.auth.signOut();
-    location.reload();
-});
-
-// CARREGAR PRODUTOS
-async function loadProducts() {
-    productsContainer.textContent = "Carregando produtos...";
-
-    const { data, error } = await db
-        .from("products")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-    if (error) {
-        productsContainer.textContent =
-            "Erro ao carregar: " + error.message;
-        return;
-    }
-
-    productsContainer.innerHTML = "";
-
-    // ATUALIZAR ESTATÍSTICAS
-    const total = data.length;
-    const active = data.filter(product => product.is_active).length;
-    const inactive = total - active;
-
-    document.getElementById("stat-total").textContent = total;
-    document.getElementById("stat-active").textContent = active;
-    document.getElementById("stat-inactive").textContent = inactive;
-
-    if (!data || data.length === 0) {
-        productsContainer.textContent = "Nenhum produto cadastrado.";
-        return;
-    }
-
-    data.forEach(product => {
-        const item = document.createElement("div");
-        item.className = "admin-product";
-
-        const image = document.createElement("img");
-        image.src = product.image_url || "";
-        image.alt = product.name;
-        image.style.cssText =
-            "width:80px;height:80px;object-fit:cover;";
-
-        const info = document.createElement("div");
-
-        const name = document.createElement("h3");
-        name.textContent = product.name;
-
-        const price = document.createElement("p");
-        price.textContent = Number(product.price).toLocaleString(
-            "pt-BR",
-            { style: "currency", currency: "BRL" }
-        );
-
-        const category = document.createElement("p");
-        category.textContent = product.category || "";
-
-        const editButton = document.createElement("button");
-        editButton.type = "button";
-        editButton.className = "edit-button";
-        editButton.textContent = "Editar";
-
-        editButton.addEventListener("click", () => {
-            editProduct(product);
-        });
-
-        const deleteButton = document.createElement("button");
-        deleteButton.type = "button";
-        deleteButton.className = "delete-button";
-        deleteButton.textContent = "Excluir";
-
-        deleteButton.addEventListener("click", () => {
-            deleteProduct(product);
-        });
-
-        info.append(name, price, category, editButton, deleteButton);
-        item.append(image, info);
-        productsContainer.appendChild(item);
+function openDB() {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open(DB_NAME, 1);
+        request.onupgradeneeded = () => {
+            if (!request.result.objectStoreNames.contains(STORE_NAME)) {
+                request.result.createObjectStore(STORE_NAME, { keyPath: "id" });
+            }
+        };
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
     });
 }
-
-// LIMPAR FORMULÁRIO
-function resetProductForm() {
-    productForm.reset();
-    currentImageUrl = "";
-
-    document.getElementById("product-id").value = "";
-    document.getElementById("image-preview").innerHTML = "";
-
-    document.getElementById("form-title").textContent =
-        "Adicionar produto";
-
-    cancelButton.hidden = true;
-    saveButton.textContent = "Salvar produto";
-
-    showStatus("");
+async function allProducts() {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+        const req = db.transaction(STORE_NAME, "readonly").objectStore(STORE_NAME).getAll();
+        req.onsuccess = () => { db.close(); resolve(req.result); };
+        req.onerror = () => { db.close(); reject(req.error); };
+    });
 }
-
-// CADASTRAR OU EDITAR
-productForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-
-    if (saving) return;
-
-    saving = true;
-    saveButton.disabled = true;
-    showStatus("Salvando produto...");
-
-    let uploadedPath = null;
-
-    try {
-        const id = document.getElementById("product-id").value;
-        const imageFile = document.getElementById("image").files[0];
-
-        let imageUrl = currentImageUrl;
-
-        if (imageFile) {
-            if (imageFile.size > 5 * 1024 * 1024) {
-                throw new Error("A imagem deve ter no máximo 5 MB.");
-            }
-
-            if (!["image/jpeg", "image/png", "image/webp"].includes(imageFile.type)) {
-                throw new Error("Use uma imagem JPG, PNG ou WEBP.");
-            }
-
-            const extension = imageFile.name.split(".").pop().toLowerCase();
-            const fileName = `${crypto.randomUUID()}.${extension}`;
-
-            const { error: uploadError } = await db.storage
-                .from("product-images")
-                .upload(fileName, imageFile, {
-                    upsert: false,
-                    contentType: imageFile.type
-                });
-
-            if (uploadError) throw uploadError;
-
-            uploadedPath = fileName;
-
-            const { data: publicData } = db.storage
-                .from("product-images")
-                .getPublicUrl(fileName);
-
-            imageUrl = publicData.publicUrl;
-        }
-
-        if (!imageUrl) {
-            throw new Error("Selecione uma imagem para o produto.");
-        }
-
-        const affiliateLink =
-            document.getElementById("affiliate").value.trim();
-
-        let parsedLink;
-
-        try {
-            parsedLink = new URL(affiliateLink);
-        } catch {
-            throw new Error("Informe um link válido da Shopee.");
-        }
-
-        const host = parsedLink.hostname.toLowerCase();
-
-        if (
-            parsedLink.protocol !== "https:" ||
-            !(host === "shopee.com.br" ||
-              host.endsWith(".shopee.com.br") ||
-              host === "s.shopee.com.br")
-        ) {
-            throw new Error("Informe um link válido da Shopee.");
-        }
-
-        const product = {
-            name: document.getElementById("name").value.trim(),
-            category: document.getElementById("category").value,
-            price: Number(document.getElementById("price").value),
-            tag: document.getElementById("tag").value.trim(),
-            affiliate_url: affiliateLink,
-            image_url: imageUrl,
-            is_active: true
-        };
-
-        if (!product.name || !Number.isFinite(product.price) || product.price <= 0) {
-            throw new Error("Confira o nome e o preço do produto.");
-        }
-
-        let result;
-
-        if (id) {
-            result = await db
-                .from("products")
-                .update(product)
-                .eq("id", id);
-        } else {
-            result = await db
-                .from("products")
-                .insert([product]);
-        }
-
-        if (result.error) throw result.error;
-
-        showStatus(
-            id ? "Produto atualizado com sucesso!" : "Produto cadastrado com sucesso!",
-            "success"
-        );
-
-        resetProductForm();
-        await loadProducts();
-
-    } catch (error) {
-        // Remove imagem recém-enviada se o cadastro/edição falhar.
-        if (uploadedPath) {
-            await db.storage
-                .from("product-images")
-                .remove([uploadedPath]);
-        }
-
-        showStatus("Erro: " + error.message, "error");
-
-    } finally {
-        saving = false;
-        saveButton.disabled = false;
+async function putProduct(product) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+        const req = db.transaction(STORE_NAME, "readwrite").objectStore(STORE_NAME).put(product);
+        req.onsuccess = () => { db.close(); resolve(); };
+        req.onerror = () => { db.close(); reject(req.error); };
+    });
+}
+async function deleteProduct(id) {
+    const db = await openDB();
+    return new Promise((resolve, reject) => {
+        const req = db.transaction(STORE_NAME, "readwrite").objectStore(STORE_NAME).delete(id);
+        req.onsuccess = () => { db.close(); resolve(); };
+        req.onerror = () => { db.close(); reject(req.error); };
+    });
+}
+function escapeHTML(value) {
+    return String(value ?? "").replace(/[&<>"']/g, char => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    })[char]);
+}
+function showStatus(message, isError = false) {
+    statusLine.textContent = message;
+    statusLine.style.color = isError ? "#ff9b9b" : "#c6ff00";
+}
+imageInput.addEventListener("change", () => {
+    const file = imageInput.files[0];
+    if (!file) return;
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+        imageInput.value = "";
+        showStatus("Escolha uma imagem JPG, PNG ou WEBP.", true);
+        return;
     }
+    if (file.size > 5 * 1024 * 1024) {
+        imageInput.value = "";
+        showStatus("A imagem passou de 5 MB. Escolha uma foto menor.", true);
+        return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+        selectedImageData = reader.result;
+        preview.src = selectedImageData;
+        preview.style.display = "block";
+        showStatus("Foto carregada. Agora salve o produto.");
+    };
+    reader.onerror = () => showStatus("Não foi possível ler essa imagem.", true);
+    reader.readAsDataURL(file);
 });
-
-// EDITAR PRODUTO
-function editProduct(product) {
+function resetForm() {
+    form.reset();
+    renderCategories();
+    document.getElementById("product-id").value = "";
+    selectedImageData = "";
+    preview.src = "";
+    preview.style.display = "none";
+    document.getElementById("form-title").innerHTML = 'ADD NEW <span>PRODUCT.</span>';
+    document.getElementById("save-button").textContent = "SAVE PRODUCT ↗";
+    document.getElementById("cancel-edit").hidden = true;
+}
+async function renderAdminProducts() {
+    const products = await allProducts();
+    if (!products.length) {
+        list.innerHTML = '<p class="admin-note">Nenhum produto cadastrado ainda.</p>';
+        return;
+    }
+    list.innerHTML = products.map(product => `
+        <article class="admin-product">
+            <img src="${escapeHTML(product.image || "")}" alt="">
+            <div class="admin-product-info">
+                <strong>${escapeHTML(product.name)}</strong>
+                <span>R$ ${Number(product.price).toFixed(2).replace(".", ",")} · ${escapeHTML(product.category)}</span>
+                <button class="admin-secondary edit-product" data-id="${escapeHTML(product.id)}" type="button">EDITAR</button>
+                <button class="delete-button remove-product" data-id="${escapeHTML(product.id)}" type="button">EXCLUIR</button>
+            </div>
+        </article>`).join("");
+    list.querySelectorAll(".edit-product").forEach(button => button.addEventListener("click", () => editProduct(button.dataset.id)));
+    list.querySelectorAll(".remove-product").forEach(button => button.addEventListener("click", () => removeProduct(button.dataset.id)));
+}
+async function editProduct(id) {
+    const product = (await allProducts()).find(item => item.id === id);
+    if (!product) return;
     document.getElementById("product-id").value = product.id;
     document.getElementById("name").value = product.name;
+    renderCategories(product.category);
     document.getElementById("category").value = product.category;
     document.getElementById("price").value = product.price;
     document.getElementById("tag").value = product.tag || "";
-    document.getElementById("affiliate").value = product.affiliate_url;
-
-    currentImageUrl = product.image_url || "";
-
-    const preview = document.getElementById("image-preview");
-    preview.innerHTML = "";
-
-    if (currentImageUrl) {
-        const image = document.createElement("img");
-        image.src = currentImageUrl;
-        image.alt = "Imagem atual do produto";
-        image.style.cssText =
-            "width:120px;height:120px;object-fit:cover;";
-        preview.appendChild(image);
+    document.getElementById("affiliate").value = product.affiliateLink || "";
+    selectedImageData = product.image || "";
+    if (selectedImageData) {
+        preview.src = selectedImageData;
+        preview.style.display = "block";
+    } else {
+        preview.style.display = "none";
     }
-
-    document.getElementById("form-title").textContent = "Editar produto";
-    saveButton.textContent = "Salvar alterações";
-    cancelButton.hidden = false;
-
-    showStatus("Editando: " + product.name);
-
+    document.getElementById("form-title").innerHTML = 'EDIT <span>PRODUCT.</span>';
+    document.getElementById("save-button").textContent = "UPDATE PRODUCT ↗";
+    document.getElementById("cancel-edit").hidden = false;
+    showStatus("Editando produto. Se não escolher outra foto, a imagem atual será mantida.");
     window.scrollTo({ top: 0, behavior: "smooth" });
 }
-
-// CANCELAR EDIÇÃO
-cancelButton.addEventListener("click", resetProductForm);
-
-// EXCLUIR PRODUTO
-async function deleteProduct(product) {
-    const confirmed = confirm(
-        `Tem certeza que deseja excluir "${product.name}"?`
-    );
-
+async function removeProduct(id) {
+    const confirmed = window.confirm("Tem certeza que deseja excluir este produto do catálogo?");
     if (!confirmed) return;
-
-    showStatus("Excluindo produto...");
-
-    const { error } = await db
-        .from("products")
-        .delete()
-        .eq("id", product.id);
-
-    if (error) {
-        showStatus("Erro ao excluir: " + error.message, "error");
+    await deleteProduct(id);
+    await renderAdminProducts();
+    showStatus("Produto excluído do catálogo.");
+}
+form.addEventListener("submit", async event => {
+    event.preventDefault();
+    const id = document.getElementById("product-id").value || `adr-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const oldProduct = (await allProducts()).find(item => item.id === id);
+    const name = document.getElementById("name").value.trim();
+    const price = Number(document.getElementById("price").value);
+    const affiliateLink = document.getElementById("affiliate").value.trim();
+    if (!/^https:\/\/(s\.shopee\.com\.br|shopee\.com\.br|www\.shopee\.com\.br)\//i.test(affiliateLink)) {
+        showStatus("Cole um link HTTPS válido da Shopee.", true);
         return;
     }
-
-    if (document.getElementById("product-id").value === product.id) {
-        resetProductForm();
-    }
-
-    showStatus("Produto excluído com sucesso!", "success");
-    await loadProducts();
-}
-
-// VERIFICAR SESSÃO
-async function checkSession() {
-    const { data, error } = await db.auth.getSession();
-
-    if (error) {
-        loginStatus.textContent = "Erro ao verificar sessão.";
+    const image = selectedImageData || oldProduct?.image || "";
+    if (!image) {
+        showStatus("Selecione uma foto para o produto.", true);
         return;
     }
-
-    if (data.session) {
-        await checkAdmin(data.session.user);
+    const product = {
+        id,
+        name,
+        category: document.getElementById("category").value,
+        price,
+        tag: document.getElementById("tag").value.trim() || "ADR SELECT",
+        affiliateLink,
+        image
+    };
+    try {
+        await putProduct(product);
+        resetForm();
+        await renderAdminProducts();
+        showStatus("Produto salvo! Atualize a página da loja ADR para conferir.");
+    } catch (error) {
+        console.error(error);
+        showStatus("Não foi possível salvar. Tente uma imagem menor ou libere espaço no navegador.", true);
     }
-}
-
-checkSession();
+});
+document.getElementById("cancel-edit").addEventListener("click", resetForm);
+renderCategories();
+renderAdminProducts().catch(error => {
+    console.error(error);
+    showStatus("Erro ao abrir o banco local deste navegador.", true);
+});
