@@ -380,8 +380,7 @@ async function editProduct(id) {
         document.getElementById("name").value = product.name;
         document.getElementById("price").value = product.price;
         document.getElementById("tag").value = product.tag || "";
-        document.getElementById("affiliate").value = product.affiliate_url || "";
-
+        document.getElementById("affiliate").value = product.affiliate_link || "";
         await renderCategories(product.category);
 
         currentImageUrl = product.image_url || "";
@@ -483,7 +482,7 @@ form.addEventListener("submit", async event => {
             category: categorySelect.value,
             price,
             tag: document.getElementById("tag").value.trim() || "ADR SELECT",
-            affiliate_url: affiliateLink,
+            affiliate_link: affiliateLink,
             image_url: imageUrl,
             is_active: true
         };

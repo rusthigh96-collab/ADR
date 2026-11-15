@@ -6,13 +6,20 @@ const db = window.supabase.createClient(
 
 const productGrid = document.getElementById("product-grid");
 const searchInput = document.getElementById("search");
+const categoryGrid = document.getElementById("category-grid");
 
 let allProducts = [];
 let selectedCategory = "all";
 
+// NORMALIZAR CATEGORIAS
+function getCategory(product) {
+    return (product.category || "").trim() || "Uncategorized";
+}
+
 // CARREGAR PRODUTOS
 async function loadProducts() {
-    productGrid.innerHTML = '<p class="empty-message">CARREGANDO PRODUTOS...</p>';
+    productGrid.innerHTML =
+        '<p class="empty-message">CARREGANDO PRODUTOS...</p>';
 
     try {
         const { data, error } = await db
@@ -24,6 +31,8 @@ async function loadProducts() {
         if (error) throw error;
 
         allProducts = data || [];
+
+        renderCategories();
         renderProducts();
 
     } catch (error) {
@@ -34,24 +43,75 @@ async function loadProducts() {
     }
 }
 
+// CRIAR CATEGORIAS AUTOMATICAMENTE
+function renderCategories() {
+    if (!categoryGrid) return;
+
+    categoryGrid.innerHTML = "";
+
+    const allButton = createCategoryButton("all", "ALL PRODUCTS");
+    categoryGrid.appendChild(allButton);
+
+    const categories = [
+        ...new Set(allProducts.map(getCategory))
+    ].sort((a, b) => a.localeCompare(b, "pt-BR"));
+
+    categories.forEach(category => {
+        const button = createCategoryButton(
+            category,
+            category === "Uncategorized"
+                ? "UNCATEGORIZED"
+                : category.toUpperCase()
+        );
+
+        categoryGrid.appendChild(button);
+    });
+}
+
+// CRIAR BOTÃO DE CATEGORIA
+function createCategoryButton(value, label) {
+    const button = document.createElement("button");
+
+    button.className = "category-card";
+    button.dataset.category = value;
+    button.textContent = label;
+
+    if (selectedCategory === value) {
+        button.classList.add("active");
+    }
+
+    button.addEventListener("click", () => {
+        selectedCategory = value;
+
+        document.querySelectorAll("[data-category]").forEach(item => {
+            item.classList.remove("active");
+        });
+
+        button.classList.add("active");
+        renderProducts();
+    });
+
+    return button;
+}
+
 // EXIBIR PRODUTOS
 function renderProducts() {
     productGrid.innerHTML = "";
 
-    let products = allProducts;
+    let products = [...allProducts];
 
     if (selectedCategory !== "all") {
-        products = products.filter(
-            product => product.category === selectedCategory
+        products = products.filter(product =>
+            getCategory(product) === selectedCategory
         );
     }
 
     if (searchInput) {
-        const search = searchInput.value.toLowerCase();
+        const search = searchInput.value.toLowerCase().trim();
 
         products = products.filter(product =>
             (product.name || "").toLowerCase().includes(search) ||
-            (product.category || "").toLowerCase().includes(search) ||
+            getCategory(product).toLowerCase().includes(search) ||
             (product.tag || "").toLowerCase().includes(search)
         );
     }
@@ -98,7 +158,7 @@ function renderProducts() {
 
         const category = document.createElement("span");
         category.className = "product-category";
-        category.textContent = product.category || "";
+        category.textContent = getCategory(product);
 
         const name = document.createElement("h3");
         name.textContent = product.name || "Produto ADR";
@@ -139,21 +199,6 @@ function renderProducts() {
 if (searchInput) {
     searchInput.addEventListener("input", renderProducts);
 }
-
-// CATEGORIAS
-document.querySelectorAll("[data-category]").forEach(button => {
-    button.addEventListener("click", () => {
-        selectedCategory = button.dataset.category;
-
-        document.querySelectorAll("[data-category]").forEach(item => {
-            item.classList.remove("active");
-        });
-
-        button.classList.add("active");
-
-        renderProducts();
-    });
-});
 
 // INICIAR
 loadProducts();
